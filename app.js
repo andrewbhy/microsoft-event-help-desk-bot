@@ -24,6 +24,9 @@ server.listen(listenPort, () => {
 // Setup body parser and sample tickets api
 server.use(restify.bodyParser());
 server.post('/api/tickets', ticketsApi);
+server.get('/test', function(req,res){
+    res.send('hi')
+})
 
 // Create chat connector for communicating with the Bot Framework Service
 var connector = new builder.ChatConnector({
