@@ -5,6 +5,7 @@ const fs = require('fs');
 const builder = require('botbuilder');
 const ticketsApi = require('./ticketsApi');
 const azureSearch = require('./azureSearchApiClient');
+const textAnalytics = require('./textAnalyticsApiClient');
 
 const listenPort = process.env.port || process.env.PORT || 3978;
 const ticketSubmissionUrl = process.env.TICKET_SUBMISSION_URL || `http://localhost:${listenPort}`;
@@ -13,6 +14,10 @@ const azureSearchQuery = azureSearch({
     searchName: process.env.AZURE_SEARCH_ACCOUNT,
     indexName: process.env.AZURE_SEARCH_INDEX,
     searchKey: process.env.AZURE_SEARCH_KEY
+});
+
+const analyzeText = textAnalytics({
+    apiKey: process.env.TEXT_ANALYTICS_KEY
 });
 
 // Setup Restify Server
@@ -119,12 +124,18 @@ bot.dialog('SubmitTicket', [
                     }));
                 }
 
-                session.endDialog();
+                //session.endDialog();
+                session.replaceDialog('UserFeedbackRequest');
+                
             });
         } else {
             session.endDialog('Ok. The ticket was not created. You can start again if you want.');
         }
-    }
+
+        
+    },
+
+    
 ]).triggerAction({
     matches: 'SubmitTicket'
 });
@@ -234,5 +245,40 @@ bot.dialog('ShowKBResults', [
         } else {
             session.endDialog(`Sorry, I could not find any results in the knowledge base for _'${args.originalText}'_`);
         }
+    }
+]);
+
+
+bot.dialog('UserFeedbackRequest', [
+    (session, args) => {
+        builder.Prompts.text(session, 'Can you please give me feedback about this experience?');
+    },
+    (session, response) => {
+        const answer = session.message.text;
+        analyzeText(answer, (err, score) => {
+            if (err) {
+                session.endDialog('Ooops! Something went wrong while analzying your answer. An IT representative agent will get in touch with you to follow up soon.');
+            } else {
+                var msg = new builder.Message(session);
+                var cardImageUrl, cardText;
+
+                // 1 - positive feeling / 0 - negative feeling
+                if (score < 0.5) {
+                    cardText = 'I understand that you might be dissatisfied with my assistance. An IT representative will get in touch with you soon to help you.';
+                    cardImageUrl = 'https://raw.githubusercontent.com/GeekTrainer/help-desk-bot-lab/master/assets/botimages/head-sad-small.png';
+                } else {
+                    cardText = 'Thanks for sharing your experience.';
+                    cardImageUrl = 'https://raw.githubusercontent.com/GeekTrainer/help-desk-bot-lab/master/assets/botimages/head-smiling-small.png';
+                }
+
+                msg.addAttachment(
+                    new builder.HeroCard(session)
+                        .text(cardText)
+                        .images([builder.CardImage.create(session, cardImageUrl)])
+                );
+
+                session.endDialog(msg);
+            }
+        });
     }
 ]);
